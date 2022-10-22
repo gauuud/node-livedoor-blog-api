@@ -6,18 +6,18 @@ const main = async (): Promise<void> => {
   if (typeof apiKey === "undefined") throw new Error("API_KEY");
   const blogId = process.env.BLOG_ID;
   if (typeof blogId === "undefined") throw new Error("BLOG_ID");
-  const hatenaId = process.env.HATENA_ID;
-  if (typeof hatenaId === "undefined") throw new Error("HATENA_ID");
+  const livedoorId = process.env.HATENA_ID;
+  if (typeof livedoorId === "undefined") throw new Error("HATENA_ID");
 
   const client = new Client({
     apiKey,
     authType: "basic",
     blogId,
-    hatenaId,
+    livedoorId,
   });
-  const entries = await client.list();
-  console.log("listed");
-  console.log(entries);
+  // const entries = await client.list();
+  // console.log("listed");
+  // console.log(entries);
 
   const created = await client.create({
     categories: ["category1"],

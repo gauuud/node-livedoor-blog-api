@@ -1,39 +1,31 @@
-import { Node } from "@bouzuya/xml";
+// import { Node } from "@bouzuya/xml";
 import request from "request";
 import { promisify } from "util";
 import wsse from "wsse";
 import {
   Request,
   deleteMember,
-  getCollection,
+  // getCollection,
   getMember,
-  getService,
+  // getService,
   postCollection,
   putMember,
 } from "./atom-pub";
 import { BlogEntry, BlogEntryParams } from "./blog-type";
-import { getEntries, getEntry, toXml } from "./xml";
+import { getEntry, toXml } from "./xml";
 
-type Credentials = BasicAuthCredentials | OAuthCredentials | WSSECredentials;
+type Credentials = BasicAuthCredentials | WSSECredentials;
 
 interface BasicAuthCredentials {
   apiKey: string;
   authType: "basic";
-  hatenaId: string;
-}
-
-interface OAuthCredentials {
-  authType: "oauth";
-  consumerKey: string;
-  consumerSecret: string;
-  token: string;
-  tokenSecret: string;
+  livedoorId: string;
 }
 
 interface WSSECredentials {
   apiKey: string;
   authType: "wsse";
-  hatenaId: string;
+  livedoorId: string;
 }
 
 // TODO
@@ -54,19 +46,7 @@ const authorizedRequest: (auth: Credentials) => Request = (
         ? {
             auth: {
               password: credentials.apiKey,
-              username: credentials.hatenaId,
-            },
-          }
-        : credentials.authType === "oauth"
-        ? {
-            oauth: {
-              // eslint-disable-next-line @typescript-eslint/camelcase
-              consumer_key: credentials.consumerKey,
-              // eslint-disable-next-line @typescript-eslint/camelcase
-              consumer_secret: credentials.consumerSecret,
-              token: credentials.token,
-              // eslint-disable-next-line @typescript-eslint/camelcase
-              token_secret: credentials.tokenSecret,
+              username: credentials.livedoorId,
             },
           }
         : credentials.authType === "wsse"
@@ -75,7 +55,7 @@ const authorizedRequest: (auth: Credentials) => Request = (
               Authorization: 'WSSE profile="UsernameToken"',
               "X-WSSE": wsse({
                 password: credentials.apiKey,
-                username: credentials.hatenaId,
+                username: credentials.livedoorId,
               }).getWSSEHeader({ nonceBase64: true }),
             },
           }
@@ -88,52 +68,27 @@ const authorizedRequest: (auth: Credentials) => Request = (
   };
 };
 
-const getServiceDocumentUri = (hatenaId: string, blogId: string): string => {
-  return `https://blog.hatena.ne.jp/${hatenaId}/${blogId}/atom`;
-};
-
-const getUnprefixedName = (prefixedName: string): string => {
-  const prefixAndLocalPart = prefixedName.split(":");
-  return prefixAndLocalPart[prefixAndLocalPart.length - 1];
-};
-
-const getCollectionUri = async (
-  authorized: Request,
-  serviceDocumentUri: string
-): Promise<string | null> => {
-  const xml = await getService(authorized, serviceDocumentUri);
-  // //collection@href
-  const f = (node: Node): string | null => {
-    if (typeof node === "string") return null;
-    const { attributes, children, name } = node;
-    return getUnprefixedName(name) === "collection"
-      ? attributes.href
-      : children.reduce((a: string | null, i): string | null => {
-          return a !== null ? a : f(i);
-        }, null);
-  };
-  return f(xml.rootElement);
-};
-
 class Client {
   private _blogId: string;
   private _credentials: Credentials;
-  private _hatenaId: string;
-  private _collectionUri: string | null;
+  // private _livedoorId: string;
+  // private _collectionUri: string | null;
 
-  constructor(params: Credentials & { blogId: string; hatenaId: string }) {
+  constructor(params: Credentials & { blogId: string }) {
     this._credentials = params;
     this._blogId = params.blogId;
-    this._hatenaId = params.hatenaId;
-    this._collectionUri = null;
+    // this._livedoorId = params.livedoorId;
+    // this._collectionUri = null;
   }
 
   public async create(entryParams: BlogEntryParams): Promise<BlogEntry> {
-    const collectionUri = await this._ensureCollectionUri();
+    // const collectionUri = await this._ensureCollectionUri();
+    const uri = `https://livedoor.blogcms.jp/atom/blog/${this._blogId}/article`;
     const requestXml = toXml(entryParams);
+
     const responseXml = await postCollection(
       authorizedRequest(this._credentials),
-      collectionUri,
+      uri,
       requestXml
     );
     return getEntry(responseXml.rootElement);
@@ -156,37 +111,12 @@ class Client {
     return getEntry(responseXml.rootElement);
   }
 
-  public async list(page?: string): Promise<BlogEntry[]> {
-    const collectionUri = await this._ensureCollectionUri();
-    const responseXml = await getCollection(
-      authorizedRequest(this._credentials),
-      collectionUri + (typeof page === "undefined" ? "" : "?page=" + page)
-    );
-    return getEntries(responseXml.rootElement);
-  }
-
   public async retrieve(memberUrl: BlogEntry["editUrl"]): Promise<BlogEntry> {
     const responseXml = await getMember(
       authorizedRequest(this._credentials),
       memberUrl
     );
     return getEntry(responseXml.rootElement);
-  }
-
-  private async _ensureCollectionUri(): Promise<string> {
-    const oldCollectionUri = this._collectionUri;
-    if (oldCollectionUri !== null) return oldCollectionUri; // use cache
-    const serviceDocumentUri = getServiceDocumentUri(
-      this._hatenaId,
-      this._blogId
-    );
-    const newCollectionUri = await getCollectionUri(
-      authorizedRequest(this._credentials),
-      serviceDocumentUri
-    );
-    if (newCollectionUri === null) throw new Error("no collection uri");
-    this._collectionUri = newCollectionUri;
-    return newCollectionUri;
   }
 }
 
